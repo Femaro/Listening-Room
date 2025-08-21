@@ -96,6 +96,24 @@ export default function VolunteerDashboard() {
     }
   };
 
+  const handleStartSession = async (sessionId) => {
+    try {
+      const response = await fetch(`/api/scheduled-sessions/${sessionId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "live" }),
+      });
+      if (!response.ok) {
+        throw new Error("Failed to start session");
+      }
+      // Navigate to session room
+      window.location.href = `/session/${sessionId}`;
+    } catch (error) {
+      console.error("Error starting session:", error);
+      setErrorSessions(error.message);
+    }
+  };
+
   const formatDate = (dateStr) => {
     return new Date(dateStr).toLocaleDateString("en-US", {
       weekday: "short",
@@ -351,13 +369,22 @@ export default function VolunteerDashboard() {
                           {/* Actions */}
                           <div className="ml-4 flex flex-col space-y-2">
                             {session.status === "scheduled" && (
-                              <button
-                                onClick={() => handleCancelSession(session.id)}
-                                className="inline-flex items-center px-3 py-1.5 text-sm text-red-700 bg-red-100 rounded hover:bg-red-200 transition-colors"
-                              >
-                                <XCircle className="w-3 h-3 mr-1" />
-                                Cancel
-                              </button>
+                              <div className="flex flex-col space-y-2">
+                                <button
+                                  onClick={() => handleStartSession(session.id)}
+                                  className="inline-flex items-center px-3 py-1.5 text-sm text-teal-700 bg-teal-100 rounded hover:bg-teal-200 transition-colors"
+                                >
+                                  <ExternalLink className="w-3 h-3 mr-1" />
+                                  Start
+                                </button>
+                                <button
+                                  onClick={() => handleCancelSession(session.id)}
+                                  className="inline-flex items-center px-3 py-1.5 text-sm text-red-700 bg-red-100 rounded hover:bg-red-200 transition-colors"
+                                >
+                                  <XCircle className="w-3 h-3 mr-1" />
+                                  Cancel
+                                </button>
+                              </div>
                             )}
                             {session.status === "live" && (
                               <a

@@ -2,19 +2,68 @@
 import { auth } from "@/auth";
 import sql from "@/app/api/utils/sql";
 
-// GET all sessions
-export async function GET() {
+// GET sessions (scoped to current volunteer by default)
+export async function GET(req) {
   try {
-    const sessions = await sql`
+    const session = await auth();
+    if (!session?.user?.id) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const url = new URL(req.url);
+    const statusFilter = url.searchParams.get("status");
+    const volunteerIdFilter = url.searchParams.get("volunteer_id");
+
+    // Determine caller role
+    const userProfile = await sql`
+      SELECT user_type FROM user_profiles WHERE user_id = ${session.user.id}
+    `;
+
+    const userType = userProfile[0]?.user_type || "seeker";
+
+    // Build query with optional filters
+    let query = `
       SELECT 
         ss.*,
         au.name as volunteer_name,
-        (SELECT COUNT(*) FROM session_bookings sb WHERE sb.scheduled_session_id = ss.id AND sb.booking_status = 'booked') as current_participants
+        (
+          SELECT COUNT(*) FROM session_bookings sb 
+          WHERE sb.scheduled_session_id = ss.id AND sb.booking_status = 'booked'
+        ) as current_participants
       FROM scheduled_sessions ss
       LEFT JOIN auth_users au ON ss.volunteer_id = au.id
-      WHERE ss.session_date >= CURRENT_DATE
-      ORDER BY ss.session_date ASC, ss.start_time ASC
     `;
+    const params = [];
+    const whereClauses = [];
+
+    if (userType === "volunteer") {
+      // Volunteers only see their own sessions
+      whereClauses.push(`ss.volunteer_id = $${params.length + 1}`);
+      params.push(session.user.id);
+    } else if (userType === "admin") {
+      // Admins may optionally filter by volunteer_id
+      if (volunteerIdFilter) {
+        whereClauses.push(`ss.volunteer_id = $${params.length + 1}`);
+        params.push(volunteerIdFilter);
+      }
+    } else {
+      // Seekers do not have access to this listing
+      return Response.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    if (statusFilter) {
+      whereClauses.push(`ss.status = $${params.length + 1}`);
+      params.push(statusFilter);
+    }
+
+    if (whereClauses.length > 0) {
+      query += ` WHERE ${whereClauses.join(" AND ")}`;
+    }
+
+    // Show newest first; include completed/past sessions too
+    query += ` ORDER BY ss.session_date DESC, ss.start_time DESC`;
+
+    const sessions = await sql(query, params);
     return Response.json({ sessions });
   } catch (error) {
     console.error("GET sessions error:", error);

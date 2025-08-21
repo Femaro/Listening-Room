@@ -30,19 +30,49 @@ export async function PUT(req, { params }) {
 
     const body = await req.json();
 
-    const updated = await sql`
+    // Allow partial updates including status changes
+    const fields = [];
+    const params = [];
+
+    if (body.title !== undefined) {
+      fields.push(`title = $${params.length + 1}`);
+      params.push(body.title);
+    }
+    if (body.description !== undefined) {
+      fields.push(`description = $${params.length + 1}`);
+      params.push(body.description);
+    }
+    if (body.session_date !== undefined) {
+      fields.push(`session_date = $${params.length + 1}`);
+      params.push(body.session_date);
+    }
+    if (body.start_time !== undefined) {
+      fields.push(`start_time = $${params.length + 1}`);
+      params.push(body.start_time);
+    }
+    if (body.duration_minutes !== undefined) {
+      fields.push(`duration_minutes = $${params.length + 1}`);
+      params.push(Number(body.duration_minutes));
+    }
+    if (body.max_participants !== undefined) {
+      fields.push(`max_participants = $${params.length + 1}`);
+      params.push(Number(body.max_participants));
+    }
+    if (body.status !== undefined) {
+      fields.push(`status = $${params.length + 1}`);
+      params.push(body.status);
+    }
+
+    fields.push(`updated_at = NOW()`);
+
+    const query = `
       UPDATE scheduled_sessions 
-      SET 
-        title = ${body.title},
-        description = ${body.description},
-        session_date = ${body.session_date},
-        start_time = ${body.start_time},
-        duration_minutes = ${Number(body.duration_minutes)},
-        max_participants = ${Number(body.max_participants)},
-        updated_at = NOW()
-      WHERE id = ${sessionId}
+      SET ${fields.join(", ")}
+      WHERE id = $${params.length + 1}
       RETURNING *
     `;
+
+    const updated = await sql(query, [...params, sessionId]);
 
     return Response.json({ session: updated[0] });
   } catch (error) {
